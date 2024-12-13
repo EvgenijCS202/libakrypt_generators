@@ -474,6 +474,22 @@ extern "C" {
  dll_export int ak_random_create_nlfsr_with_params( ak_random , size_t , ak_uint64 );
 /*! \brief Инициализация контекста генератора на основе функции хеширования согласно Р 1323565.1.006-2017. */
  dll_export int ak_random_create_hrng( ak_random );
+
+/*! \brief Инициализация контекста квадратичного конгруэнтного генератора псевдо-случайных чисел.          */
+ dll_export int ak_random_create_qcg( ak_random );
+/*! \brief Инициализация контекста генератора псевдо-случайных чисел Ковею.                                */
+ dll_export int ak_random_create_coveyou( ak_random );
+/*! \brief Инициализация контекста генератора псевдо-случайных чисел Фибоначи.                             */
+ dll_export int ak_random_create_fibonachi( ak_random );
+/*! \brief Инициализация контекста Грина Смита Клема генератора псевдо-случайных чисел.                    */
+ dll_export int ak_random_create_gck( ak_random );
+/*! \brief Инициализация контекста генератора псевдо-случайных чисел Митчела.                              */
+ dll_export int ak_random_create_mitchel( ak_random );
+/*! \brief Инициализация контекста Алгоритма М по Кнуту генератора псевдо-случайных чисел                  */
+ dll_export int ak_random_create_knuth_m( ak_random, ak_random, ak_random, ak_uint8 );
+/*! \brief Инициализация контекста Алгоритма B по Кнуту генератора псевдо-случайных чисел                  */
+ dll_export int ak_random_create_knuth_b( ak_random, ak_random, ak_uint8 );
+
 /*! \brief Инициализация контекста генератора по заданному OID алгоритма генерации псевдо-случайных чисел. */
  dll_export int ak_random_create_oid( ak_random, ak_oid );
 /*! \brief Установка внутреннего состояния генератора псевдо-случайных чисел. */

@@ -1057,5 +1057,1123 @@ slabel:
 }
 
 /* ----------------------------------------------------------------------------------------------- */
+/*                   реализация класса квадратичного конгруэтного метода                           */
+/* ----------------------------------------------------------------------------------------------- */
+
+/*! \brief Класс для хранения внутренних состояний генератора квадратичного конгруэтного метода */
+typedef struct random_quadratic_congruence_method
+{
+  /*! \brief Текущее значение генератора */
+  ak_uint32 xn;
+  /*! \brief Коэффициент перед xn^2 */
+  ak_uint32 d;
+  /*! \brief Коэффициент перед xn */
+  ak_uint32 a;
+  /*! \brief Свободный член */
+  ak_uint32 c;
+  /*! \brief Модуль */
+  ak_uint32 m;
+} *ak_random_qcg;
+
+const ak_uint32 random_quadratic_congruence_method_a = 0x57FF7;
+const ak_uint32 random_quadratic_congruence_method_c = 0x418693;
+const ak_uint32 random_quadratic_congruence_method_d = 0x2;
+const ak_uint32 random_quadratic_congruence_method_m = 0xFFFFFFFC;
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @brief Функция вычисляет новое значение внутреннего состояния генератора
+ *
+ * @param rnd Контекст создаваемого генератора.
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_qcg_next(ak_random rnd)
+{
+
+  ak_random_qcg qcg = NULL;
+
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+
+  if( (qcg = (ak_random_qcg)rnd->data.ctx) == NULL )
+    return ak_error_message( ak_error_undefined_value, __func__ ,
+                                                     "using non initialized context" );
+
+  qcg->xn = (((qcg->d*((qcg->xn*qcg->xn) % qcg->m)) % qcg->m) + ((qcg->a*qcg->xn) % qcg->m) + qcg->c) % qcg->m;
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, где располагаются данные,
+ *            которыми инициализируется генератор псевдослучайных чисел
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_qcg_randomize_ptr( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  ak_random_qcg ctx = NULL;
+  if (rnd == NULL) return ak_error_message(ak_error_null_pointer, __func__,
+                                                       "use a null pointer to a random generator");
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( (ak_uint64)size < sizeof(ak_uint32) ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+
+  ctx = rnd->data.ctx;
+  ctx->xn = ((ak_uint32 *)ptr)[0];
+
+  if( (ak_uint64)size < 5*sizeof(ak_uint32) ) return ak_error_ok;
+  ctx->a = ((ak_uint32 *)ptr)[1];
+  ctx->c = ((ak_uint32 *)ptr)[2];
+  ctx->d = ((ak_uint32 *)ptr)[3];
+  ctx->m = ((ak_uint32 *)ptr)[4];
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, куда помещаются случайные данные
+ * @param size размер данных (в байтах)
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_qcg_random(ak_random rnd, const ak_pointer ptr, const ssize_t size)
+{
+  int error = ak_error_ok;
+  if (rnd == NULL) return ak_error_message(ak_error_null_pointer, __func__,
+                                                       "use a null pointer to a random generator");
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( size <= 0 ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+
+  ak_uint8 *outbuf = ptr;
+  ssize_t i = 0;
+  while (i < size)
+  {
+    if ((error = rnd->next(rnd)) != ak_error_ok)
+      return error;
+    ak_uint8* genptr = (ak_uint8*)(&((ak_random_qcg)rnd->data.ctx)->xn)+sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+  }
+
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_qcg_free(ak_random rnd)
+{
+  if (rnd == NULL) return ak_error_message(ak_error_null_pointer, __func__,
+                                                       "use a null pointer to a random generator");
+
+  memset(rnd->data.ctx, 0, sizeof(struct random_quadratic_congruence_method));
+  free(rnd->data.ctx);
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+int ak_random_create_qcg( ak_random rnd )
+{
+  int error = ak_error_ok;
+  if(( error = ak_random_create( rnd )) != ak_error_ok )
+    return ak_error_message( error, __func__ , "wrong initialization of random generator" );
+ /* выделяем память под внутренний контекст генератора */
+  if(( rnd->data.ctx = calloc( 1, sizeof( struct random_quadratic_congruence_method ))) == NULL ) {
+    ak_random_destroy( rnd );
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  }
+ /* устанавливаем обработчики событий */
+  rnd->oid = ak_oid_find_by_name("qcg");
+  rnd->next = ak_random_qcg_next;
+  rnd->randomize_ptr = ak_random_qcg_randomize_ptr;
+  rnd->random = ak_random_qcg_random;
+  rnd->free = ak_random_qcg_free;
+  ((ak_random_qcg)rnd->data.ctx)->a = random_quadratic_congruence_method_a;
+  ((ak_random_qcg)rnd->data.ctx)->c = random_quadratic_congruence_method_c;
+  ((ak_random_qcg)rnd->data.ctx)->d = random_quadratic_congruence_method_d;
+  ((ak_random_qcg)rnd->data.ctx)->m = random_quadratic_congruence_method_m;
+
+ /* инициализируем начальное состояние */
+  ak_uint32 x0 = 0x8299;
+  if(( error = (rnd->randomize_ptr( rnd, &x0, 4))) != ak_error_ok )
+   return ak_error_message( error, __func__, "incorrect initialization of internal state" );
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/*                   реализация класса квадратичного метода Ковэю                                  */
+/* ----------------------------------------------------------------------------------------------- */
+
+/*! \brief Класс для хранения внутренних состояний генератора квадратичного конгруэтного метода */
+typedef struct random_quadratic_coveyou_method
+{
+  /*! \brief Текущее значение генератора */
+  ak_uint32 x;
+  /*! \brief Модуль */
+  ak_uint32 m;
+} *ak_random_coveyou;
+
+const ak_uint32 random_coveyou_m = 0xFFFFFFFB;
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @brief Функция вычисляет новое значение внутреннего состояния генератора
+ *
+ * @param rnd Контекст создаваемого генератора.
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_coveyou_next(ak_random rnd)
+{
+
+  ak_random_coveyou coveyou = NULL;
+
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+
+  if( (coveyou = (ak_random_coveyou)rnd->data.ctx) == NULL )
+    return ak_error_message( ak_error_undefined_value, __func__ ,
+                                                     "using non initialized context" );
+
+  coveyou->x = ((ak_uint64)coveyou->x * (coveyou->x + 1)) % coveyou->m;
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, где располагаются данные,
+ *            которыми инициализируется генератор псевдослучайных чисел
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_coveyou_randomize_ptr( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  ak_random_coveyou ctx = NULL;
+  if (rnd == NULL) return ak_error_message(ak_error_null_pointer, __func__,
+                                                       "use a null pointer to a random generator");
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( (ak_uint64)size < sizeof(ak_uint32) ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+
+  ctx = rnd->data.ctx;
+  if( (((ak_uint32 *)ptr)[0] & 3) != 2 ) return ak_error_message( ak_error_invalid_value, __func__ ,
+                                                          "use invalid init value" );
+  ctx->x = ((ak_uint32 *)ptr)[0];
+
+  if( (ak_uint64)size < 2*sizeof(ak_uint32) ) return ak_error_ok;
+  ctx->m = ((ak_uint32 *)ptr)[1];
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, куда помещаются случайные данные
+ * @param size размер данных (в байтах)
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_coveyou_random(ak_random rnd, const ak_pointer ptr, const ssize_t size)
+{
+  int error = ak_error_ok;
+  if (rnd == NULL) return ak_error_message(ak_error_null_pointer, __func__,
+                                                       "use a null pointer to a random generator");
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( size <= 0 ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+
+  ak_uint8 *outbuf = ptr;
+  ssize_t i = 0;
+  while (i < size)
+  {
+    if ((error = rnd->next(rnd)) != ak_error_ok)
+      return error;
+    ak_uint8* genptr = (ak_uint8*)(&((ak_random_coveyou)rnd->data.ctx)->x)+sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+  }
+
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_coveyou_free(ak_random rnd)
+{
+  if (rnd == NULL) return ak_error_message(ak_error_null_pointer, __func__,
+                                                       "use a null pointer to a random generator");
+
+  memset(rnd->data.ctx, 0, sizeof(struct random_quadratic_coveyou_method));
+  free(rnd->data.ctx);
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+int ak_random_create_coveyou(ak_random rnd )
+{
+  int error = ak_error_ok;
+
+  if(( error = ak_random_create( rnd )) != ak_error_ok )
+    return ak_error_message( error, __func__ , "wrong initialization of random generator" );
+
+ /* выделяем память под внутренний контекст генератора */
+  if(( rnd->data.ctx = calloc( 1, sizeof( struct random_quadratic_coveyou_method ))) == NULL ) {
+    ak_random_destroy( rnd );
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  }
+
+ /* устанавливаем обработчики событий */
+  rnd->oid = ak_oid_find_by_name("coveyou");
+  rnd->next = ak_random_coveyou_next;
+  rnd->randomize_ptr = ak_random_coveyou_randomize_ptr;
+  rnd->random = ak_random_coveyou_random;
+  rnd->free = ak_random_coveyou_free;
+
+ /* инициализируем начальное состояние */
+  ((ak_random_coveyou)rnd->data.ctx)->m = random_coveyou_m;
+  ak_uint32 x0 = 0x380316;
+  if(( error = rnd->randomize_ptr( rnd, &x0, 4)) != ak_error_ok )
+   return ak_error_message( error, __func__, "incorrect initialization of internal state" );
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/*                                   реализация класса фибоначи                                    */
+/* ----------------------------------------------------------------------------------------------- */
+/*! \brief Класс для хранения внутренних состояний генератора фибоначи */
+ typedef struct random_fibonachi {
+  /*! \brief текущее значание генератора */
+  ak_uint32 xn;
+  /*! \brief предыдущее значение генератора */
+  ak_uint32 xprev;
+  /*! \brief модуль */
+  ak_uint32 m;
+ } *ak_random_fibonachi;
+
+ const ak_uint32 random_fibonachi_m = 0xFFFFFFFB;
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @brief Функция вычисляет новое значение внутреннего состояния генератора
+ *
+ * @param rnd Контекст создаваемого генератора.
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_fibonachi_next( ak_random rnd )
+{
+  int error = ak_error_ok;
+  ak_random_fibonachi fibonachi = NULL;
+
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+  if(( fibonachi = (ak_random_fibonachi) rnd->data.ctx ) == NULL )
+   return ak_error_message( ak_error_undefined_value, __func__, "using non initialized context" );
+
+  ak_uint32 next = ((ak_uint64)fibonachi->xn + fibonachi->xprev) % fibonachi->m;
+  fibonachi->xprev = fibonachi->xn;
+  fibonachi->xn = next;
+ return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, где располагаются данные,
+ *            которыми инициализируется генератор псевдослучайных чисел
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_fibonachi_randomize_ptr( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  ak_random_fibonachi ctx = NULL;
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                      "use a null pointer to a random generator" );
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( (ak_uint64)size < 2*sizeof(ak_uint32) ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+
+  ctx = rnd->data.ctx;
+  ctx->xn = ((ak_uint32 *)ptr)[0];
+  ctx->xprev = ((ak_uint32 *)ptr)[1];
+
+  if( (ak_uint64)size < 3*sizeof(ak_uint32) ) return ak_error_ok;
+  ctx->m = ((ak_uint32 *)ptr)[2];
+
+ return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, куда помещаются случайные данные
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_fibonachi_random( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  int error = ak_error_ok;
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                      "use a null pointer to a random generator" );
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( size <= 0 ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+  
+  ak_uint8 *outbuf = ptr;
+  ssize_t i = 0;
+  while (i < size)
+  {
+    if ((error = rnd->next(rnd)) != ak_error_ok)
+      return error;
+    ak_uint8* genptr = (ak_uint8*)(&((ak_random_fibonachi)rnd->data.ctx)->xn)+sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+  }
+
+ return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_fibonachi_free( ak_random rnd )
+{
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+  memset( rnd->data.ctx, 0, sizeof( struct random_fibonachi ));
+  free( rnd->data.ctx );
+  
+ return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ int ak_random_create_fibonachi( ak_random rnd )
+{
+  int error = ak_error_ok;
+
+  if(( error = ak_random_create( rnd )) != ak_error_ok )
+    return ak_error_message( error, __func__ , "wrong initialization of random generator" );
+
+ /* выделяем память под внутренний контекст генератора */
+  if(( rnd->data.ctx = calloc( 1, sizeof( struct random_fibonachi ))) == NULL ) {
+    ak_random_destroy( rnd );
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  }
+  
+ /* устанавливаем обработчики событий */
+  rnd->oid = ak_oid_find_by_name("fibonachi");
+  rnd->next = ak_random_fibonachi_next;
+  rnd->randomize_ptr = ak_random_fibonachi_randomize_ptr;
+  rnd->random = ak_random_fibonachi_random;
+  rnd->free = ak_random_fibonachi_free;
+
+ /* инициализируем начальное состояние */
+  ((ak_random_fibonachi)rnd->data.ctx)->m = random_fibonachi_m;
+  ak_uint32 init[2] = { 0x4E5F6A7B, 0xA1B2C3D4 };
+  if(( error = rnd->randomize_ptr( rnd, init, 8 )) != ak_error_ok )
+   return ak_error_message( error, __func__, "incorrect initialization of internal state" );
+
+ return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/*                                   реализация класса Грина Смита Клема                           */
+/* ----------------------------------------------------------------------------------------------- */
+
+/*! \brief Класс для хранения внутренних состояний генератора Грина Смита Клема */
+typedef struct random_gck {
+  /*! \brief текущее состояние */
+  ak_uint32 next;
+  /*! \brief количество хранимых предыдущих состояиний */
+  ak_uint64 k;
+  /*! \brief предыдущие k состояний */
+  ak_uint32 *x;
+  /*! \brief модуль */
+  ak_uint32 m;
+ } *ak_random_gck;
+
+const ak_uint64 random_gck_k = 47;
+const ak_uint32 random_gck_m = 0xFFFFFFFB;
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @brief Функция вычисляет новое значение внутреннего состояния генератора
+ *
+ * @param rnd Контекст создаваемого генератора.
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_gck_next( ak_random rnd )
+{
+  int error = ak_error_ok;
+  ak_random_gck gck = NULL;
+
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+  if(( gck = (ak_random_gck) rnd->data.ctx ) == NULL )
+   return ak_error_message( ak_error_undefined_value, __func__, "using non initialized context" );
+
+  ak_uint32 next = ((ak_uint64)gck->next + gck->x[0])%gck->m;
+  ak_uint32 *buf = malloc(sizeof(ak_uint32) * (gck->k-1));
+  memcpy(buf,gck->x + sizeof(ak_uint32), sizeof(ak_uint32) * (gck->k-1));
+  memcpy(gck->x, buf, sizeof(ak_uint32) * (gck->k-1));
+  memset (buf, 0, sizeof(ak_uint32) * (gck->k-1));
+  free(buf);
+  memcpy(&gck->x[gck->k-1], &gck->next, sizeof(ak_uint32));
+  gck->next = next;
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, где располагаются данные,
+ *            которыми инициализируется генератор псевдослучайных чисел
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_gck_randomize_ptr( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  ak_random_gck ctx = NULL;
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                      "use a null pointer to a random generator" );
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( size % 4 != 0 ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+
+  ctx = rnd->data.ctx;
+  ctx->k = size>>2;
+  ctx->x = realloc( ctx->x, (ssize_t)sizeof(ak_uint32) * (size>>2));
+  memcpy( ctx->x, ptr, sizeof(ak_uint32) * (size>>2) );
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, куда помещаются случайные данные
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_gck_random( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  int error = ak_error_ok;
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                      "use a null pointer to a random generator" );
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( size <= 0 ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+  
+  ak_uint8 *outbuf = ptr;
+  ssize_t i = 0;
+  while (i < size)
+  {
+    if ((error = rnd->next(rnd)) != ak_error_ok)
+      return error;
+    ak_uint8* genptr = (ak_uint8*)(&((ak_random_gck)rnd->data.ctx)->next)+sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+  }
+  
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_gck_free( ak_random rnd )
+{
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+  memset(((ak_random_gck)rnd->data.ctx)->x, 0, ((ak_random_gck)rnd->data.ctx)->k * sizeof(ak_uint32));
+  free(((ak_random_gck)rnd->data.ctx)->x);
+  memset( rnd->data.ctx, 0, sizeof( struct random_gck ));
+  free( rnd->data.ctx );
+  
+ return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ int ak_random_create_gck( ak_random rnd )
+{
+  int error = ak_error_ok;
+
+  if(( error = ak_random_create( rnd )) != ak_error_ok )
+    return ak_error_message( error, __func__ , "wrong initialization of random generator" );
+
+ /* выделяем память под внутренний контекст генератора */
+  if(( rnd->data.ctx = calloc( 1, sizeof( struct random_gck ))) == NULL ) {
+    ak_random_destroy( rnd );
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  }
+
+ /* устанавливаем обработчики событий */
+  rnd->oid = ak_oid_find_by_name("gck");
+  rnd->next = ak_random_gck_next;
+  rnd->randomize_ptr = ak_random_gck_randomize_ptr;
+  rnd->random = ak_random_gck_random;
+  rnd->free = ak_random_gck_free;
+  ((ak_random_gck)rnd->data.ctx)->x = malloc(1);
+  ((ak_random_gck)rnd->data.ctx)->m = random_gck_m;
+
+ /* инициализируем начальное состояние */
+ ak_uint32 init[45] = {
+  0x74b3f95c, 0x8f6ea02e, 0x0127d3ab, 0xf30c98bd, 0x5d86a1e2,
+  0xdba46cc1, 0x6e7934df, 0xca47b8f0, 0x3e91dc2a, 0x89fa4cc9,
+  0x1273bf04, 0x40e95dea, 0xc1567ff1, 0x9ed3a6c8, 0x28fae80c,
+  0x6db05bc2, 0x718c9f75, 0x24d6715f, 0x9b6949e8, 0xa390df17,
+  0xc0831a62, 0x46fd8dc3, 0x5b4e63f9, 0x2c3ae4b7, 0x7f19d209,
+  0x9d20e151, 0xeb3ca74b, 0x66a1cd0e, 0xf4be9a6d, 0x3bddf0a5,
+  0x0f71b93a, 0x5c820df4, 0x9a546362, 0x32fe8cc0, 0xbbb2a4db,
+  0xe8623d97, 0x151de34c, 0x8cec96ed, 0x615f7432, 0x2f40abd1,
+  0x49ea6738, 0x0a2b193f, 0xe5150c29, 0x7b034c16, 0x14cf9bb1 };
+ if(( error = rnd->randomize_ptr( rnd, init, 45 * sizeof(ak_uint32) )) != ak_error_ok )
+  return ak_error_message( error, __func__, "incorrect initialization of internal state" );
+ return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/*                                   реализация класса Митчела                                     */
+/* ----------------------------------------------------------------------------------------------- */
+
+/*! \brief Класс для хранения внутренних состояний генератора Митечела */
+typedef struct random_mitchel {
+  /*! \brief текущее состояние */
+  ak_uint32 next;
+  /*! \brief предыдущие k состояний */
+  ak_uint32 *x;
+  /*! \brief модуль */
+  ak_uint32 m;
+ } *ak_random_mitchel;
+
+ const ak_uint32 random_mitchel_m = 0xFFFFFFFB;
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @brief Функция вычисляет новое значение внутреннего состояния генератора
+ *
+ * @param rnd Контекст создаваемого генератора.
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_mitchel_next( ak_random rnd )
+{
+  int error = ak_error_ok;
+  ak_random_mitchel mitchel = NULL;
+
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+  if(( mitchel = (ak_random_mitchel) rnd->data.ctx ) == NULL )
+   return ak_error_message( ak_error_undefined_value, __func__, "using non initialized context" );
+
+ ak_uint32 next = ((ak_uint64)mitchel->x[0] + mitchel->x[30]) % mitchel->m;
+ ak_uint32 *buf = malloc(sizeof(ak_uint32) * 54);
+ memcpy(buf,&mitchel->x[1], sizeof(ak_uint32) * 54);
+ memcpy(mitchel->x, buf, sizeof(ak_uint32) * 54);
+ memset (buf, 0, sizeof(ak_uint32) * 54);
+ free(buf);
+ memcpy(&mitchel->x[54], &mitchel->next, sizeof(ak_uint32));
+ mitchel->next = next;
+
+ return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, где располагаются данные,
+ *            которыми инициализируется генератор псевдослучайных чисел
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_mitchel_randomize_ptr( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  ak_random_mitchel ctx = NULL;
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                      "use a null pointer to a random generator" );
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+
+  ctx = rnd->data.ctx;
+  if( (ak_uint64)size < 55*sizeof(ak_uint32) ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+
+  memcpy( ctx->x, ptr, sizeof(ak_uint32) * 55 );
+
+ return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, куда помещаются случайные данные
+ * @param size размер данных (в байтах)
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_mitchel_random( ak_random rnd, const ak_pointer ptr, const ssize_t size )
+{
+  int error = ak_error_ok;
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                      "use a null pointer to a random generator" );
+  if( ptr == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                          "use a null pointer to initial vector" );
+  if( size <= 0 ) return ak_error_message( ak_error_wrong_length, __func__ ,
+                                                          "use initial vector with wrong length" );
+  
+  ak_uint8 *outbuf = ptr;
+  ssize_t i = 0;
+  while (i < size)
+  {
+    if ((error = rnd->next(rnd)) != ak_error_ok)
+      return error;
+    ak_uint8* genptr = (ak_uint8*)(&((ak_random_mitchel)rnd->data.ctx)->next)+sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+    if(i == size) return error;
+    genptr += sizeof(ak_uint8);
+    memcpy(outbuf, genptr, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+    ++i;
+  }
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ static int ak_random_mitchel_free( ak_random rnd )
+{
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+  memset(((ak_random_mitchel)rnd->data.ctx)->x, 0, 55 * sizeof(ak_uint32));
+  free(((ak_random_mitchel)rnd->data.ctx)->x);
+  memset( rnd->data.ctx, 0, sizeof( struct random_mitchel ));
+  free( rnd->data.ctx );
+  
+ return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+ int ak_random_create_mitchel( ak_random rnd )
+{
+  int error = ak_error_ok;
+
+  if(( error = ak_random_create( rnd )) != ak_error_ok )
+    return ak_error_message( error, __func__ , "wrong initialization of random generator" );
+
+ /* выделяем память под внутренний контекст генератора */
+  if(( rnd->data.ctx = calloc( 1, sizeof( struct random_fibonachi ))) == NULL ) {
+    ak_random_destroy( rnd );
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  }
+
+ /* устанавливаем обработчики событий */
+  rnd->oid = ak_oid_find_by_name("mitchel");
+  rnd->next = ak_random_mitchel_next;
+  rnd->randomize_ptr = ak_random_mitchel_randomize_ptr;
+  rnd->random = ak_random_mitchel_random;
+  rnd->free = ak_random_mitchel_free;
+  ((ak_random_mitchel)rnd->data.ctx)->x = malloc(55*sizeof(ak_uint32));
+  ((ak_random_mitchel)rnd->data.ctx)->m = random_mitchel_m;
+ 
+ /* инициализируем начальное состояние */
+  ak_uint32 init[55] = {
+    0x9f4b4f6a, 0xc1ed8d5e, 0x3bfe8d14, 0x05b8cc52, 0x6a7e2b19,
+    0xd444a710, 0xf39bd3af, 0xc9a9f92e, 0x537ce20b, 0xa4f3c218,
+    0xfb93acd4, 0xc52dfd21, 0x1125bf61, 0xe8a72d6c, 0x7bada3ed,
+    0x628c51be, 0x05b4a3f7, 0x2e9c8f24, 0x9ba342df, 0xeca19c3a,
+    0x18f8c871, 0x4df9b16b, 0x93a7d8c2, 0x7afda0b6, 0x5d4a3c48,
+    0xd3b8f5c7, 0x4af35c91, 0x1e98fa6e, 0xaa67c449, 0x84bacf3f,
+    0x5e4c2a79, 0x0ba87422, 0x15e72fbb, 0x4f9c3ae6, 0x305814e0,
+    0x7f210a58, 0xa7f69127, 0x7d9a3f10, 0x62db4ad5, 0x8493c6f0,
+    0x5325f4db, 0x7ff8d83a, 0xfcbe7c05, 0x9c2137b3, 0x143adf57,
+    0xc5b42a01, 0x6d4c06ea, 0x317f21c8, 0x1fa783f1, 0x72e59a90,
+    0x49f2dcbd, 0xd8ad6ec2, 0x58f6836d, 0xb0e9c3ff, 0x329b0edc };
+  if(( error = rnd->randomize_ptr( rnd, init, 55*sizeof(ak_uint32))) != ak_error_ok )
+   return ak_error_message( error, __func__, "incorrect initialization of internal state" );
+
+ return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/*                   реализация класса knuth_m (Алгоритм M из книги Кнута)                         */
+/* ----------------------------------------------------------------------------------------------- */
+/*! \brief Класс для хранения внутренних состояний генератора knuth_m */
+typedef struct random_knuth_m
+{
+  /*! \brief Используемый генератор X */
+  ak_random source_gen_x;
+  /*! \brief Используемый генератор Y */
+  ak_random source_gen_y;
+  /*! \brief Количество элементов внутреннего состояния */
+  ak_uint8 k;
+  /*! \brief Внутреннее состояние */
+  ak_uint8 *v;
+  /*! \brief Сгенерированное значение */
+  ak_uint8 next;
+} *ak_random_knuth_m;
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @brief Функция вычисляет новое значение внутреннего состояния генератора
+ *
+ * @param rnd Контекст создаваемого генератора.
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_knuth_m_next(ak_random rnd)
+{
+  int error = ak_error_ok;
+
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+
+  ak_uint8 next;
+  if ((error = ((ak_random_knuth_m)rnd->data.ctx)->source_gen_y->random(((ak_random_knuth_m)rnd->data.ctx)->source_gen_y, &next, 1)) != ak_error_ok)
+    return error;
+
+  ak_uint8 j = (((ak_random_knuth_m)rnd->data.ctx)->k * (ak_uint32)next) >> 8;
+  ((ak_random_knuth_m)rnd->data.ctx)->next = ((ak_random_knuth_m)rnd->data.ctx)->v[j];
+
+  if ((error = ((ak_random_knuth_m)rnd->data.ctx)->source_gen_x->random(((ak_random_knuth_m)rnd->data.ctx)->source_gen_x, &next, 1)) != ak_error_ok)
+    return error;
+
+  ((ak_random_knuth_m)rnd->data.ctx)->v[j] = next;
+
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, куда помещаются случайные данные
+ * @param size размер данных (в байтах)
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_knuth_m_random(ak_random rnd, const ak_pointer ptr, const ssize_t size)
+{
+  int error = ak_error_ok;
+  ak_uint8 *outbuf = ptr;
+  for (ssize_t i = 0; i < size; i++)
+  {
+    if ((error = rnd->next(rnd)) != ak_error_ok)
+      return error;
+    memcpy(outbuf, &((ak_random_knuth_m)rnd->data.ctx)->next, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+  }
+
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_knuth_m_free(ak_random rnd)
+{
+  int error = ak_error_ok;
+  if (rnd == NULL)
+    return ak_error_message(ak_error_null_pointer, __func__,
+                            "use a null pointer to a random generator");
+
+  ((ak_random_knuth_m)rnd->data.ctx)->source_gen_x = NULL;
+  ((ak_random_knuth_m)rnd->data.ctx)->source_gen_y = NULL;
+  memset(((ak_random_knuth_m)rnd->data.ctx)->v, 0, ((ak_random_knuth_m)rnd->data.ctx)->k);
+  free(((ak_random_knuth_m)rnd->data.ctx)->v);
+  ((ak_random_knuth_m)rnd->data.ctx)->v = NULL;
+  memset(rnd->data.ctx, 0, sizeof(struct random_knuth_m));
+  free( rnd->data.ctx );
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+int ak_random_create_knuth_m(ak_random rnd, ak_random source_gen_x, ak_random source_gen_y, ak_uint8 k)
+{
+  int error = ak_error_ok;
+
+  if(( error = ak_random_create( rnd )) != ak_error_ok )
+    return ak_error_message( error, __func__ , "wrong initialization of random generator" );
+
+ /* выделяем память под внутренний контекст генератора */
+  if(( rnd->data.ctx = calloc( 1, sizeof( struct random_knuth_m ))) == NULL ) {
+    ak_random_destroy( rnd );
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  }
+
+ /* устанавливаем обработчики событий */
+  // rnd->oid = ak_oid_find_by_name("knuth_m");
+  rnd->next = ak_random_knuth_m_next;
+  rnd->randomize_ptr = NULL;
+  rnd->random = ak_random_knuth_m_random;
+  rnd->free = ak_random_knuth_m_free;
+
+  ((ak_random_knuth_m)rnd->data.ctx)->source_gen_x = source_gen_x;
+  ((ak_random_knuth_m)rnd->data.ctx)->source_gen_y = source_gen_y;
+  ((ak_random_knuth_m)rnd->data.ctx)->k = k;
+  ((ak_random_knuth_m)rnd->data.ctx)->v = malloc(k);
+  if(((ak_random_knuth_m)rnd->data.ctx)->v == NULL)
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  source_gen_x->random(source_gen_x, ((ak_random_knuth_m)rnd->data.ctx)->v, k);
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/*                   реализация класса knuth_b (Алгоритм B из книги Кнута)                         */
+/* ----------------------------------------------------------------------------------------------- */
+/*! \brief Класс для хранения внутренних состояний генератора knuth_b */
+typedef struct random_knuth_b
+{
+  /*! \brief Используемый генератор */
+  ak_random source_gen;
+  /*! \brief Количество элементов внутреннего состояния */
+  ak_uint8 k;
+  /*! \brief Внутреннее состояние */
+  ak_uint8 *v;
+  /*! \brief Сгенерированное значение */
+  ak_uint8 next;
+} *ak_random_knuth_b;
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @brief Функция вычисляет новое значение внутреннего состояния генератора
+ *
+ * @param rnd Контекст создаваемого генератора.
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_knuth_b_next(ak_random rnd)
+{
+  int error = ak_error_ok;
+
+  if( rnd == NULL ) return ak_error_message( ak_error_null_pointer, __func__ ,
+                                                     "use a null pointer to a random generator" );
+
+  ak_uint8 next;
+  if ((error = ((ak_random_knuth_b)rnd->data.ctx)->source_gen->random(((ak_random_knuth_b)rnd->data.ctx)->source_gen, &next, 1)) != ak_error_ok)
+    return error;
+
+  ak_uint8 j = (((ak_random_knuth_b)rnd->data.ctx)->k * (ak_uint32)next) >> 8;
+  ((ak_random_knuth_b)rnd->data.ctx)->next = ((ak_random_knuth_b)rnd->data.ctx)->v[j];
+
+  if ((error = ((ak_random_knuth_b)rnd->data.ctx)->source_gen->random(((ak_random_knuth_b)rnd->data.ctx)->source_gen, &next, 1)) != ak_error_ok)
+    return error;
+
+  ((ak_random_knuth_b)rnd->data.ctx)->v[j] = next;
+
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @param ptr указатель на область памяти, куда помещаются случайные данные
+ * @param size размер данных (в байтах)
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_knuth_b_random(ak_random rnd, const ak_pointer ptr, const ssize_t size)
+{
+  int error = ak_error_ok;
+  ak_uint8 *outbuf = ptr;
+  for (ssize_t i = 0; i < size; i++)
+  {
+    if ((error = rnd->next(rnd)) != ak_error_ok)
+      return error;
+    memcpy(outbuf, &((ak_random_knuth_b)rnd->data.ctx)->next, sizeof(ak_uint8));
+    outbuf += sizeof(ak_uint8);
+  }
+
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+ * @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+static int ak_random_knuth_b_free(ak_random rnd)
+{
+  int error = ak_error_ok;
+  if (rnd == NULL)
+    return ak_error_message(ak_error_null_pointer, __func__,
+                            "use a null pointer to a random generator");
+
+  ((ak_random_knuth_b)rnd->data.ctx)->source_gen = NULL;
+  memset(((ak_random_knuth_b)rnd->data.ctx)->v, 0, ((ak_random_knuth_b)rnd->data.ctx)->k);
+  free(((ak_random_knuth_b)rnd->data.ctx)->v);
+  ((ak_random_knuth_b)rnd->data.ctx)->v = NULL;
+  memset(rnd->data.ctx, 0, sizeof(struct random_knuth_b));
+  free(rnd->data.ctx);
+
+  return error;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
+/**
+ * @param rnd контекст генератора псевдослучайных чисел
+   @return int В случае успеха, функция возвращает \ref ak_error_ok. В противном случае
+            возвращается код ошибки.
+ */
+int ak_random_create_knuth_b(ak_random rnd, ak_random source_gen, ak_uint8 k)
+{
+  int error = ak_error_ok;
+
+  if(( error = ak_random_create( rnd )) != ak_error_ok )
+    return ak_error_message( error, __func__ , "wrong initialization of random generator" );
+
+ /* выделяем память под внутренний контекст генератора */
+  if(( rnd->data.ctx = calloc( 1, sizeof( struct random_knuth_b ))) == NULL ) {
+    ak_random_destroy( rnd );
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  }
+
+/* устанавливаем обработчики событий */
+  // rnd->oid = ak_oid_find_by_name("knuth_b");
+  rnd->next = ak_random_knuth_b_next;
+  rnd->randomize_ptr = NULL;
+  rnd->random = ak_random_knuth_b_random;
+  rnd->free = ak_random_knuth_b_free;
+
+  ((ak_random_knuth_b)rnd->data.ctx)->source_gen = source_gen;
+  ((ak_random_knuth_b)rnd->data.ctx)->k = k;
+  ((ak_random_knuth_b)rnd->data.ctx)->v = malloc(sizeof(ak_uint8) * k);
+  if(((ak_random_knuth_b)rnd->data.ctx)->v == NULL)
+    return ak_error_message( ak_error_null_pointer, __func__, "incorrect memory allocation ");
+  source_gen->random(source_gen, ((ak_random_knuth_b)rnd->data.ctx)->v, k);
+
+  return ak_error_ok;
+}
+
+/* ----------------------------------------------------------------------------------------------- */
 /*                                                                                    ak_random.c  */
 /* ----------------------------------------------------------------------------------------------- */

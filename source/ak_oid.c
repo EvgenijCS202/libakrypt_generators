@@ -64,6 +64,16 @@
  static const char *asn1_hrng_i[] =        { "1.2.643.2.52.1.1.5", NULL };
  static const char *asn1_nlfsr_n[] =       { "nlfsr", NULL };
  static const char *asn1_nlfsr_i[] =       { "1.2.643.2.52.1.1.6", NULL };
+ static const char *asn1_qcg_n[] =         { "qcg", NULL };
+ static const char *asn1_qcg_i[] =         { "1.2.643.2.52.1.1.7", NULL };
+ static const char *asn1_coveyou_n[] =     { "coveyou", NULL };
+ static const char *asn1_coveyou_i[] =     { "1.2.643.2.52.1.1.8", NULL };
+ static const char *asn1_fibonachi_n[] =   { "fibonachi", NULL };
+ static const char *asn1_fibonachi_i[] =   { "1.2.643.2.52.1.1.9", NULL };
+ static const char *asn1_gck_n[] =         { "gck", NULL };
+ static const char *asn1_gck_i[] =         { "1.2.643.2.52.1.1.10", NULL };
+ static const char *asn1_mitchel_n[] =     { "mitchel", NULL };
+ static const char *asn1_mitchel_i[] =     { "1.2.643.2.52.1.1.11", NULL };
 
  static const char *asn1_streebog256_n[] = { "streebog256", "md_gost12_256", NULL };
  static const char *asn1_streebog256_i[] = { "1.2.643.7.1.1.2.2", NULL };
@@ -543,6 +553,31 @@ static struct oid libakrypt_oids[] =
 
  { random_generator, algorithm, asn1_nlfsr_i, asn1_nlfsr_n, NULL,
   {{ sizeof( struct random ), (ak_function_create_object *)ak_random_create_nlfsr,
+                              (ak_function_destroy_object *)ak_random_destroy, NULL, NULL, NULL },
+                                                                ak_object_undefined, NULL, NULL }},
+
+ { random_generator, algorithm, asn1_qcg_i, asn1_qcg_n, NULL,
+  {{ sizeof( struct random ), (ak_function_create_object *)ak_random_create_qcg,
+                              (ak_function_destroy_object *)ak_random_destroy, NULL, NULL, NULL },
+                                                                ak_object_undefined, NULL, NULL }},
+
+ { random_generator, algorithm, asn1_coveyou_i, asn1_coveyou_n, NULL,
+  {{ sizeof( struct random ), (ak_function_create_object *)ak_random_create_coveyou,
+                              (ak_function_destroy_object *)ak_random_destroy, NULL, NULL, NULL },
+                                                                ak_object_undefined, NULL, NULL }},
+
+ { random_generator, algorithm, asn1_fibonachi_i, asn1_fibonachi_n, NULL,
+  {{ sizeof( struct random ), (ak_function_create_object *)ak_random_create_fibonachi,
+                              (ak_function_destroy_object *)ak_random_destroy, NULL, NULL, NULL },
+                                                                ak_object_undefined, NULL, NULL }},
+
+ { random_generator, algorithm, asn1_gck_i, asn1_gck_n, NULL,
+  {{ sizeof( struct random ), (ak_function_create_object *)ak_random_create_gck,
+                              (ak_function_destroy_object *)ak_random_destroy, NULL, NULL, NULL },
+                                                                ak_object_undefined, NULL, NULL }},
+
+ { random_generator, algorithm, asn1_mitchel_i, asn1_mitchel_n, NULL,
+  {{ sizeof( struct random ), (ak_function_create_object *)ak_random_create_mitchel,
                               (ak_function_destroy_object *)ak_random_destroy, NULL, NULL, NULL },
                                                                 ak_object_undefined, NULL, NULL }},
 
